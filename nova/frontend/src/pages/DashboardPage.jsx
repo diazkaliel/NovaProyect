@@ -1,6 +1,6 @@
 import { useAuth } from '../context/AuthContext'
 import { motion } from 'framer-motion'
-import { Wrench, Users, Package, LogOut, ChevronRight } from 'lucide-react'
+import { Wrench, Users, Package, LogOut, ChevronRight, Smartphone } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import AnimatedBackground from '../components/AnimatedBackground'
 import { useGlitch } from '../hooks/useGlitch'
@@ -36,6 +36,16 @@ const modules = [
     accentBg: 'rgba(52,211,153,.10)',
     accentBorder: 'rgba(52,211,153,.25)',
     accentHover: 'rgba(52,211,153,.18)',
+  },
+  {
+    title: 'Valores de Pantallas',
+    description: 'Consulta rápida de precios de pantallas al cliente, costos y ganancias de marcas conocidas.',
+    icon: Smartphone,
+    path: '/screen-prices',
+    accent: '#f43f5e',
+    accentBg: 'rgba(244,63,94,.10)',
+    accentBorder: 'rgba(244,63,94,.25)',
+    accentHover: 'rgba(244,63,94,.18)',
   },
 ]
 
@@ -160,7 +170,7 @@ export default function DashboardPage() {
         /* ── Module cards ───────────────────────────────────────────────────── */
         .modules-grid {
           display: grid;
-          grid-template-columns: repeat(3, 1fr);
+          grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
           gap: 14px;
           margin-bottom: 40px;
         }

@@ -1,9 +1,43 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ArrowLeft, Plus, Search, Users, Phone, Mail, ChevronRight, X } from 'lucide-react'
+import { ArrowLeft, Plus, Search, Users, Phone, Mail, ChevronRight, X, Download, Upload } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { getClients, createClientApi } from '../api/clients'
 import AnimatedBackground from '../components/AnimatedBackground'
+
+function parseCSV(text) {
+  const lines = []
+  let row = [""]
+  let inQuotes = false
+
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i]
+    const next = text[i+1]
+
+    if (c === '"') {
+      if (inQuotes && next === '"') {
+        row[row.length - 1] += '"'
+        i++
+      } else {
+        inQuotes = !inQuotes
+      }
+    } else if (c === ',' && !inQuotes) {
+      row.push("")
+    } else if ((c === '\r' || c === '\n') && !inQuotes) {
+      if (c === '\r' && next === '\n') {
+        i++
+      }
+      lines.push(row)
+      row = [""]
+    } else {
+      row[row.length - 1] += c
+    }
+  }
+  if (row.length > 1 || row[0] !== "") {
+    lines.push(row)
+  }
+  return lines
+}
 
 const inputClass = "w-full bg-gray-800/50 border border-gray-700/50 hover:border-gray-600 focus:border-purple-500/70 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none transition-all"
 
@@ -141,6 +175,123 @@ export default function ClientsPage() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [showNewModal, setShowNewModal] = useState(false)
+  const fileInputRef = useRef(null)
+  const [importSummary, setImportSummary] = useState(null)
+
+  const handleImportCSVFile = (e) => {
+    const file = e.target.files[0]
+    if (!file) return
+
+    const reader = new FileReader()
+    reader.onload = async (event) => {
+      const text = event.target.result
+      const rows = parseCSV(text)
+      if (rows.length < 2) {
+        alert('El archivo CSV está vacío o no contiene suficientes filas.')
+        return
+      }
+
+      const headers = rows[0].map(h => h.trim().toLowerCase())
+      const nameIndex = headers.indexOf('fullname')
+      const emailIndex = headers.indexOf('email')
+      const phoneIndex = headers.indexOf('phone')
+      const dniIndex = headers.indexOf('dni')
+      const descIndex = headers.indexOf('contactdescription')
+
+      if (nameIndex === -1 || phoneIndex === -1) {
+        alert('El archivo CSV debe contener al menos las columnas "FullName" y "Phone".')
+        return
+      }
+
+      let successCount = 0
+      let duplicateCount = 0
+      let errorCount = 0
+
+      setLoading(true)
+
+      for (let i = 1; i < rows.length; i++) {
+        const row = rows[i]
+        if (row.length < 2 || !row[nameIndex]) continue
+
+        const payload = {
+          name: row[nameIndex].trim(),
+          phone: row[phoneIndex] ? row[phoneIndex].trim() : '',
+          email: emailIndex !== -1 && row[emailIndex] ? row[emailIndex].trim() : null,
+          rut: dniIndex !== -1 && row[dniIndex] ? row[dniIndex].trim() : null,
+          city: descIndex !== -1 && row[descIndex] ? row[descIndex].trim() : null,
+        }
+
+        if (payload.email === '') payload.email = null
+        if (payload.rut === '') payload.rut = null
+        if (payload.city === '') payload.city = null
+
+        if (!payload.name || !payload.phone) {
+          errorCount++
+          continue
+        }
+
+        try {
+          await createClientApi(payload)
+          successCount++
+        } catch (err) {
+          if (err.response?.status === 400) {
+            duplicateCount++
+          } else {
+            console.error('Error importando cliente:', err)
+            errorCount++
+          }
+        }
+      }
+
+      e.target.value = ''
+      setImportSummary({
+        success: successCount,
+        duplicates: duplicateCount,
+        errors: errorCount
+      })
+      fetchClients(search)
+    }
+    reader.readAsText(file, 'UTF-8')
+  }
+
+  const handleExportCSV = () => {
+    if (clients.length === 0) return
+
+    // 1. Cabeceras del CSV especificadas
+    const headers = ['FullName', 'Email', 'Phone', 'Dni', 'ContactDescription']
+
+    // 2. Mapeo de campos: FullName (name), Email, Phone, Dni (rut), ContactDescription (city)
+    const rows = clients.map(client => [
+      client.name,
+      client.email || '',
+      client.phone,
+      client.rut || '',
+      client.city || ''
+    ])
+
+    const escapeCSV = (val) => {
+      const stringVal = val === null || val === undefined ? '' : String(val)
+      if (stringVal.includes(',') || stringVal.includes('"') || stringVal.includes('\n')) {
+        return `"${stringVal.replace(/"/g, '""')}"`
+      }
+      return stringVal
+    }
+
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => row.map(escapeCSV).join(','))
+    ].join('\n')
+
+    // Con el BOM (\uFEFF) para soporte óptimo de caracteres latinos (acentos, ñ) en Excel
+    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.setAttribute('download', `clientes_nova_${new Date().toISOString().split('T')[0]}.csv`)
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }
 
   const fetchClients = async (searchTerm = '') => {
     setLoading(true)
@@ -195,16 +346,48 @@ export default function ClientsPage() {
             </div>
           </div>
 
-          <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            onClick={() => setShowNewModal(true)}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-white"
-            style={{ background: 'linear-gradient(135deg, #a855f7, #06b6d4)' }}
-          >
-            <Plus size={16} />
-            Nuevo Cliente
-          </motion.button>
+          <div className="flex items-center gap-2">
+            <input
+              type="file"
+              accept=".csv"
+              ref={fileInputRef}
+              className="hidden"
+              onChange={handleImportCSVFile}
+            />
+
+            <motion.button
+              whileHover={{ scale: 1.03 }}
+              whileTap={{ scale: 0.97 }}
+              onClick={() => fileInputRef.current.click()}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-gray-300 border border-gray-800 hover:border-gray-700 bg-gray-900/40 hover:text-white transition-all duration-200"
+            >
+              <Upload size={16} className="text-purple-400" />
+              Importar CSV
+            </motion.button>
+
+            {clients.length > 0 && (
+              <motion.button
+                whileHover={{ scale: 1.03 }}
+                whileTap={{ scale: 0.97 }}
+                onClick={handleExportCSV}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-gray-300 border border-gray-800 hover:border-gray-700 bg-gray-900/40 hover:text-white transition-all duration-200"
+              >
+                <Download size={16} className="text-cyan-400" />
+                Exportar CSV
+              </motion.button>
+            )}
+
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => setShowNewModal(true)}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-white"
+              style={{ background: 'linear-gradient(135deg, #a855f7, #06b6d4)' }}
+            >
+              <Plus size={16} />
+              Nuevo Cliente
+            </motion.button>
+          </div>
         </div>
       </nav>
 
@@ -293,6 +476,52 @@ export default function ClientsPage() {
             onClose={() => setShowNewModal(false)}
             onCreated={() => { setShowNewModal(false); fetchClients(search) }}
           />
+        )}
+
+        {importSummary && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+            onClick={() => setImportSummary(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, y: 15 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 15 }}
+              onClick={e => e.stopPropagation()}
+              className="bg-gray-950 border border-gray-800 rounded-2xl p-6 w-full max-w-sm shadow-2xl text-left"
+            >
+              <h3 className="text-white font-bold text-lg mb-4">Resultado de la Importación</h3>
+              
+              <div className="space-y-3 mb-6">
+                <div className="flex justify-between items-center bg-emerald-500/10 border border-emerald-500/20 px-4 py-2.5 rounded-xl">
+                  <span className="text-emerald-400 text-sm font-semibold">Clientes Creados</span>
+                  <span className="text-emerald-400 font-bold">{importSummary.success}</span>
+                </div>
+                
+                <div className="flex justify-between items-center bg-amber-500/10 border border-amber-500/20 px-4 py-2.5 rounded-xl">
+                  <span className="text-amber-400 text-sm font-semibold">Duplicados Omitidos</span>
+                  <span className="text-amber-400 font-bold">{importSummary.duplicates}</span>
+                </div>
+
+                {importSummary.errors > 0 && (
+                  <div className="flex justify-between items-center bg-red-500/10 border border-red-500/20 px-4 py-2.5 rounded-xl">
+                    <span className="text-red-400 text-sm font-semibold">Registros con Error</span>
+                    <span className="text-red-400 font-bold">{importSummary.errors}</span>
+                  </div>
+                )}
+              </div>
+
+              <button
+                onClick={() => setImportSummary(null)}
+                className="w-full bg-gradient-to-r from-purple-500 to-cyan-500 hover:from-purple-600 hover:to-cyan-600 text-white font-bold py-2.5 rounded-xl text-sm transition-all"
+              >
+                Entendido
+              </button>
+            </motion.div>
+          </motion.div>
         )}
       </AnimatePresence>
     </div>

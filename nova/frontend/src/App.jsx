@@ -6,6 +6,9 @@ import RepairsPage from './pages/RepairsPage'
 import NewRepairPage from './pages/NewRepairPage'
 import RepairDetailPage from './pages/RepairDetailPage'
 import InventoryPage from './pages/InventoryPage'
+import ScreenPricesPage from './pages/ScreenPricesPage'
+import ClientsPage from './pages/ClientsPage'
+import ClientDetailPage from './pages/ClientDetailPage'
 
 
 
@@ -36,6 +39,9 @@ export default function App() {
           <Route path="/repairs/new" element={<PrivateRoute><NewRepairPage /></PrivateRoute>} />
           <Route path="/repairs/:id" element={<PrivateRoute><RepairDetailPage /></PrivateRoute>} />
           <Route path="/inventory" element={<PrivateRoute><InventoryPage /></PrivateRoute>} />
+          <Route path="/screen-prices" element={<PrivateRoute><ScreenPricesPage /></PrivateRoute>} />
+          <Route path="/clients" element={<PrivateRoute><ClientsPage /></PrivateRoute>} />
+          <Route path="/clients/:id" element={<PrivateRoute><ClientDetailPage /></PrivateRoute>} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>
